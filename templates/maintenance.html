@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block title %}报修管理{% endblock %}
+{% block content %}
+<h2>报修管理</h2>
+<form method="post" class="form-grid panel">
+  <input type="hidden" name="id" value="{{ edit_item.id if edit_item else '' }}">
+  <label>报修日期<input type="date" name="report_date" required value="{{ edit_item.report_date if edit_item else today }}"></label>
+  <label>宿舍楼<input name="building" required value="{{ edit_item.building if edit_item else '' }}"></label>
+  <label>房间号<input name="room_number" required value="{{ edit_item.room_number if edit_item else '' }}"></label>
+  <label>报修内容<input name="content" required value="{{ edit_item.content if edit_item else '' }}"></label>
+  <label>报修人<input name="reporter" required value="{{ edit_item.reporter if edit_item else '' }}"></label>
+  <label>处理状态
+    {% set st = edit_item.status if edit_item else '待处理' %}
+    <select name="status"><option value="待处理" {{ 'selected' if st == '待处理' else '' }}>待处理</option><option value="处理中" {{ 'selected' if st == '处理中' else '' }}>处理中</option><option value="已完成" {{ 'selected' if st == '已完成' else '' }}>已完成</option></select>
+  </label>
+  <label>完成日期<input type="date" name="completed_date" value="{{ edit_item.completed_date if edit_item else '' }}"></label>
+  <label class="full">备注<textarea name="notes">{{ edit_item.notes if edit_item else '' }}</textarea></label>
+  <div><button type="submit">{{ '更新报修' if edit_item else '新增报修' }}</button> {% if edit_item %}<a href="{{ url_for('maintenance') }}">取消编辑</a>{% endif %}</div>
+</form>
+
+<div class="toolbar">
+  <form method="get">
+    <input name="q" value="{{ q }}" placeholder="按楼栋/房间号/状态搜索">
+    <button type="submit">查询</button>
+  </form>
+</div>
+<table>
+  <thead><tr><th>日期</th><th>宿舍楼</th><th>房间号</th><th>内容</th><th>报修人</th><th>状态</th><th>完成日期</th><th>备注</th><th>操作</th></tr></thead>
+  <tbody>
+  {% for r in records %}
+    <tr>
+      <td>{{ r.report_date }}</td><td>{{ r.building }}</td><td>{{ r.room_number }}</td><td>{{ r.content }}</td><td>{{ r.reporter }}</td>
+      <td>{{ r.status }}</td><td>{{ r.completed_date or '-' }}</td><td>{{ r.notes }}</td>
+      <td><a href="{{ url_for('maintenance', edit_id=r.id) }}">编辑状态</a></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="9">暂无数据</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

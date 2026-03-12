@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}{{ '新增员工' if mode == 'add' else '编辑员工' }}{% endblock %}
+{% block content %}
+<h2>{{ '新增员工' if mode == 'add' else '编辑员工' }}</h2>
+<form method="post" class="form-grid">
+  <label>员工姓名<input name="name" required value="{{ employee.name if employee else '' }}"></label>
+  <label>性别
+    <select name="gender" required>
+      {% set gender = employee.gender if employee else '' %}
+      <option value="男" {{ 'selected' if gender == '男' else '' }}>男</option>
+      <option value="女" {{ 'selected' if gender == '女' else '' }}>女</option>
+    </select>
+  </label>
+  <label>部门<input name="department" required value="{{ employee.department if employee else '' }}"></label>
+  <label>岗位<input name="position" required value="{{ employee.position if employee else '' }}"></label>
+  <label>联系电话<input name="phone" value="{{ employee.phone if employee else '' }}"></label>
+  <label>入职日期<input type="date" name="hire_date" value="{{ employee.hire_date if employee else '' }}"></label>
+  <label>紧急联系人<input name="emergency_contact" value="{{ employee.emergency_contact if employee else '' }}"></label>
+  <label>紧急联系电话<input name="emergency_phone" value="{{ employee.emergency_phone if employee else '' }}"></label>
+  <label>是否住宿
+    {% set resident = employee.is_resident|string if employee else '0' %}
+    <select name="is_resident">
+      <option value="0" {{ 'selected' if resident == '0' else '' }}>否</option>
+      <option value="1" {{ 'selected' if resident == '1' else '' }}>是</option>
+    </select>
+  </label>
+  <div><button type="submit">保存</button> <a href="{{ url_for('employees') }}">返回</a></div>
+</form>
+{% endblock %}

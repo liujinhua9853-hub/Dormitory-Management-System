@@ -1,0 +1,555 @@
+from __future__ import annotations
+
+import sqlite3
+from contextlib import closing
+from datetime import date, datetime
+from pathlib import Path
+
+from flask import Flask, g, redirect, render_template, request, url_for, flash
+
+BASE_DIR = Path(__file__).resolve().parent
+DB_PATH = BASE_DIR / "dormitory.db"
+
+app = Flask(__name__)
+app.config["SECRET_KEY"] = "dormitory-dev-key"
+
+
+def get_db() -> sqlite3.Connection:
+    if "db" not in g:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        g.db = conn
+    return g.db
+
+
+@app.teardown_appcontext
+def close_db(_error=None):
+    db = g.pop("db", None)
+    if db is not None:
+        db.close()
+
+
+def execute(query: str, params: tuple = ()):
+    db = get_db()
+    cur = db.execute(query, params)
+    db.commit()
+    return cur
+
+
+def query_all(query: str, params: tuple = ()):
+    cur = get_db().execute(query, params)
+    return cur.fetchall()
+
+
+def query_one(query: str, params: tuple = ()):
+    cur = get_db().execute(query, params)
+    return cur.fetchone()
+
+
+def init_db(with_demo: bool = True):
+    schema_path = BASE_DIR / "schema.sql"
+    with closing(sqlite3.connect(DB_PATH)) as conn:
+        with schema_path.open("r", encoding="utf-8") as f:
+            conn.executescript(f.read())
+
+        if with_demo:
+            conn.executescript(
+                """
+                INSERT OR IGNORE INTO employees (id, name, gender, department, position, phone, hire_date, emergency_contact, emergency_phone, is_resident)
+                VALUES
+                (1, '张三', '男', '生产部', '技术员', '13800000001', '2024-01-10', '张父', '13800001001', 1),
+                (2, '李四', '女', '行政部', '文员', '13800000002', '2024-03-15', '李母', '13800001002', 0),
+                (3, '王五', '男', '仓储部', '仓管员', '13800000003', '2023-11-01', '王姐', '13800001003', 1);
+
+                INSERT OR IGNORE INTO rooms (id, building, floor, room_number, room_type, total_beds, occupied_beds, status, notes)
+                VALUES
+                (1, 'A栋', '1', '101', '四人间', 4, 2, '可入住', '靠近电梯'),
+                (2, 'A栋', '1', '102', '双人间', 2, 0, '可入住', ''),
+                (3, 'B栋', '2', '201', '四人间', 4, 0, '维修中', '空调维修');
+
+                INSERT OR IGNORE INTO checkins (id, employee_id, room_id, bed_no, checkin_date, deposit, key_issued, notes, active)
+                VALUES
+                (1, 1, 1, '1', '2024-05-01', 500, 1, '已登记', 1),
+                (2, 3, 1, '2', '2024-05-12', 500, 1, '已登记', 1);
+
+                INSERT OR IGNORE INTO maintenance (id, report_date, building, room_number, content, reporter, status, completed_date, notes)
+                VALUES
+                (1, date('now','-5 day'), 'A栋', '101', '卫生间漏水', '张三', '处理中', NULL, ''),
+                (2, date('now','-2 day'), 'B栋', '201', '空调不制冷', '宿管员', '待处理', NULL, '等待配件');
+
+                INSERT OR IGNORE INTO inspections (id, inspect_date, building, room_number, inspect_type, inspect_result, issue_desc, handling_result, notes)
+                VALUES
+                (1, date('now','-3 day'), 'A栋', '101', '卫生', '不合格', '垃圾未及时清理', '限期整改', ''),
+                (2, date('now','-1 day'), 'A栋', '102', '安全', '合格', '', '无', '');
+                """
+            )
+            conn.commit()
+
+
+def validate_phone(phone: str) -> bool:
+    return phone.isdigit() and 7 <= len(phone) <= 15
+
+
+def refresh_room_status(room_id: int):
+    room = query_one("SELECT total_beds, occupied_beds, status FROM rooms WHERE id=?", (room_id,))
+    if not room:
+        return
+    if room["status"] in ("维修中", "停用"):
+        return
+    status = "满员" if room["occupied_beds"] >= room["total_beds"] else "可入住"
+    execute("UPDATE rooms SET status=? WHERE id=?", (status, room_id))
+
+
+@app.route("/")
+def dashboard():
+    stats = {
+        "employee_total": query_one("SELECT COUNT(*) c FROM employees")["c"],
+        "resident_total": query_one("SELECT COUNT(*) c FROM employees WHERE is_resident=1")["c"],
+        "room_total": query_one("SELECT COUNT(*) c FROM rooms")["c"],
+        "beds_total": query_one("SELECT COALESCE(SUM(total_beds),0) c FROM rooms")["c"],
+        "beds_used": query_one("SELECT COALESCE(SUM(occupied_beds),0) c FROM rooms")["c"],
+        "repair_open": query_one("SELECT COUNT(*) c FROM maintenance WHERE status!='已完成'")["c"],
+        "month_checkins": query_one(
+            "SELECT COUNT(*) c FROM checkins WHERE strftime('%Y-%m', checkin_date)=strftime('%Y-%m','now')"
+        )["c"],
+        "month_checkouts": query_one(
+            "SELECT COUNT(*) c FROM checkouts WHERE strftime('%Y-%m', checkout_date)=strftime('%Y-%m','now')"
+        )["c"],
+    }
+    stats["beds_free"] = max(stats["beds_total"] - stats["beds_used"], 0)
+    return render_template("dashboard.html", stats=stats)
+
+
+@app.route("/employees")
+def employees():
+    q = request.args.get("q", "").strip()
+    if q:
+        rows = query_all(
+            """
+            SELECT * FROM employees
+            WHERE name LIKE ? OR department LIKE ? OR position LIKE ? OR phone LIKE ?
+            ORDER BY id DESC
+            """,
+            tuple(f"%{q}%" for _ in range(4)),
+        )
+    else:
+        rows = query_all("SELECT * FROM employees ORDER BY id DESC")
+    return render_template("employees.html", employees=rows, q=q)
+
+
+@app.route("/employees/add", methods=["GET", "POST"])
+def employee_add():
+    if request.method == "POST":
+        form = request.form
+        if form["phone"] and not validate_phone(form["phone"]):
+            flash("联系电话格式不正确", "error")
+            return render_template("employee_form.html", employee=form, mode="add")
+        if form["emergency_phone"] and not validate_phone(form["emergency_phone"]):
+            flash("紧急联系电话格式不正确", "error")
+            return render_template("employee_form.html", employee=form, mode="add")
+        execute(
+            """
+            INSERT INTO employees (name, gender, department, position, phone, hire_date, emergency_contact, emergency_phone, is_resident)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                form["name"],
+                form["gender"],
+                form["department"],
+                form["position"],
+                form["phone"],
+                form["hire_date"],
+                form["emergency_contact"],
+                form["emergency_phone"],
+                1 if form.get("is_resident") == "1" else 0,
+            ),
+        )
+        flash("员工新增成功", "success")
+        return redirect(url_for("employees"))
+    return render_template("employee_form.html", employee=None, mode="add")
+
+
+@app.route("/employees/<int:employee_id>/edit", methods=["GET", "POST"])
+def employee_edit(employee_id: int):
+    employee = query_one("SELECT * FROM employees WHERE id=?", (employee_id,))
+    if not employee:
+        flash("员工不存在", "error")
+        return redirect(url_for("employees"))
+    if request.method == "POST":
+        form = request.form
+        if form["phone"] and not validate_phone(form["phone"]):
+            flash("联系电话格式不正确", "error")
+            return render_template("employee_form.html", employee=form, mode="edit")
+        execute(
+            """
+            UPDATE employees SET name=?, gender=?, department=?, position=?, phone=?, hire_date=?, emergency_contact=?, emergency_phone=?, is_resident=?
+            WHERE id=?
+            """,
+            (
+                form["name"],
+                form["gender"],
+                form["department"],
+                form["position"],
+                form["phone"],
+                form["hire_date"],
+                form["emergency_contact"],
+                form["emergency_phone"],
+                1 if form.get("is_resident") == "1" else 0,
+                employee_id,
+            ),
+        )
+        flash("员工信息已更新", "success")
+        return redirect(url_for("employees"))
+    return render_template("employee_form.html", employee=employee, mode="edit")
+
+
+@app.route("/employees/<int:employee_id>/delete", methods=["POST"])
+def employee_delete(employee_id: int):
+    active = query_one("SELECT id FROM checkins WHERE employee_id=? AND active=1", (employee_id,))
+    if active:
+        flash("该员工存在在住记录，不能删除", "error")
+    else:
+        execute("DELETE FROM employees WHERE id=?", (employee_id,))
+        flash("员工已删除", "success")
+    return redirect(url_for("employees"))
+
+
+@app.route("/rooms")
+def rooms():
+    q = request.args.get("q", "").strip()
+    if q:
+        rows = query_all(
+            """
+            SELECT * FROM rooms
+            WHERE building LIKE ? OR room_number LIKE ? OR status LIKE ?
+            ORDER BY id DESC
+            """,
+            (f"%{q}%", f"%{q}%", f"%{q}%"),
+        )
+    else:
+        rows = query_all("SELECT * FROM rooms ORDER BY id DESC")
+    return render_template("rooms.html", rooms=rows, q=q)
+
+
+@app.route("/rooms/add", methods=["GET", "POST"])
+def room_add():
+    if request.method == "POST":
+        form = request.form
+        total_beds = int(form["total_beds"])
+        execute(
+            """
+            INSERT INTO rooms (building, floor, room_number, room_type, total_beds, occupied_beds, status, notes)
+            VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+            """,
+            (
+                form["building"],
+                form["floor"],
+                form["room_number"],
+                form["room_type"],
+                total_beds,
+                form["status"],
+                form["notes"],
+            ),
+        )
+        flash("房间新增成功", "success")
+        return redirect(url_for("rooms"))
+    return render_template("room_form.html", room=None, mode="add")
+
+
+@app.route("/rooms/<int:room_id>/edit", methods=["GET", "POST"])
+def room_edit(room_id: int):
+    room = query_one("SELECT * FROM rooms WHERE id=?", (room_id,))
+    if not room:
+        flash("房间不存在", "error")
+        return redirect(url_for("rooms"))
+    if request.method == "POST":
+        form = request.form
+        total_beds = int(form["total_beds"])
+        if room["occupied_beds"] > total_beds:
+            flash("床位总数不能小于当前入住人数", "error")
+            return render_template("room_form.html", room=room, mode="edit")
+        execute(
+            """
+            UPDATE rooms SET building=?, floor=?, room_number=?, room_type=?, total_beds=?, status=?, notes=?
+            WHERE id=?
+            """,
+            (
+                form["building"],
+                form["floor"],
+                form["room_number"],
+                form["room_type"],
+                total_beds,
+                form["status"],
+                form["notes"],
+                room_id,
+            ),
+        )
+        refresh_room_status(room_id)
+        flash("房间信息已更新", "success")
+        return redirect(url_for("rooms"))
+    return render_template("room_form.html", room=room, mode="edit")
+
+
+@app.route("/rooms/<int:room_id>/delete", methods=["POST"])
+def room_delete(room_id: int):
+    active = query_one("SELECT id FROM checkins WHERE room_id=? AND active=1", (room_id,))
+    if active:
+        flash("该房间仍有在住人员，不能删除", "error")
+    else:
+        execute("DELETE FROM rooms WHERE id=?", (room_id,))
+        flash("房间已删除", "success")
+    return redirect(url_for("rooms"))
+
+
+@app.route("/checkins", methods=["GET", "POST"])
+def checkins():
+    if request.method == "POST":
+        form = request.form
+        employee_id = int(form["employee_id"])
+        room_id = int(form["room_id"])
+        bed_no = form["bed_no"].strip()
+
+        employee = query_one("SELECT * FROM employees WHERE id=?", (employee_id,))
+        room = query_one("SELECT * FROM rooms WHERE id=?", (room_id,))
+
+        if not employee or not room:
+            flash("员工或房间不存在", "error")
+            return redirect(url_for("checkins"))
+        if room["status"] in ("维修中", "停用"):
+            flash("该房间状态不允许入住", "error")
+            return redirect(url_for("checkins"))
+        if employee["is_resident"] == 1:
+            flash("该员工已在住宿舍", "error")
+            return redirect(url_for("checkins"))
+        if room["occupied_beds"] >= room["total_beds"]:
+            flash("该房间已满员", "error")
+            return redirect(url_for("checkins"))
+        bed_in_use = query_one(
+            "SELECT id FROM checkins WHERE room_id=? AND bed_no=? AND active=1",
+            (room_id, bed_no),
+        )
+        if bed_in_use:
+            flash("该床位已有人入住", "error")
+            return redirect(url_for("checkins"))
+
+        execute(
+            """
+            INSERT INTO checkins (employee_id, room_id, bed_no, checkin_date, deposit, key_issued, notes, active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+            """,
+            (
+                employee_id,
+                room_id,
+                bed_no,
+                form["checkin_date"],
+                float(form["deposit"] or 0),
+                1 if form.get("key_issued") == "1" else 0,
+                form["notes"],
+            ),
+        )
+        execute("UPDATE rooms SET occupied_beds=occupied_beds+1 WHERE id=?", (room_id,))
+        refresh_room_status(room_id)
+        execute("UPDATE employees SET is_resident=1 WHERE id=?", (employee_id,))
+        flash("办理入住成功", "success")
+        return redirect(url_for("checkins"))
+
+    records = query_all(
+        """
+        SELECT c.*, e.name employee_name, r.building, r.room_number
+        FROM checkins c
+        JOIN employees e ON c.employee_id=e.id
+        JOIN rooms r ON c.room_id=r.id
+        ORDER BY c.id DESC
+        """
+    )
+    employees_not_resident = query_all("SELECT id, name FROM employees WHERE is_resident=0 ORDER BY name")
+    available_rooms = query_all("SELECT id, building, room_number FROM rooms WHERE status='可入住' OR status='满员' ORDER BY building, room_number")
+    return render_template(
+        "checkins.html",
+        records=records,
+        employees=employees_not_resident,
+        rooms=available_rooms,
+        today=date.today().isoformat(),
+    )
+
+
+@app.route("/checkouts", methods=["GET", "POST"])
+def checkouts():
+    if request.method == "POST":
+        form = request.form
+        checkin_id = int(form["checkin_id"])
+        checkin = query_one("SELECT * FROM checkins WHERE id=? AND active=1", (checkin_id,))
+        if not checkin:
+            flash("入住记录不存在或已退宿", "error")
+            return redirect(url_for("checkouts"))
+
+        execute(
+            """
+            INSERT INTO checkouts (checkin_id, employee_id, room_id, bed_no, checkout_date, room_checked, damaged, deposit_returned, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                checkin_id,
+                checkin["employee_id"],
+                checkin["room_id"],
+                checkin["bed_no"],
+                form["checkout_date"],
+                1 if form.get("room_checked") == "1" else 0,
+                1 if form.get("damaged") == "1" else 0,
+                1 if form.get("deposit_returned") == "1" else 0,
+                form["notes"],
+            ),
+        )
+        execute("UPDATE checkins SET active=0 WHERE id=?", (checkin_id,))
+        execute("UPDATE rooms SET occupied_beds=MAX(occupied_beds-1,0) WHERE id=?", (checkin["room_id"],))
+        refresh_room_status(checkin["room_id"])
+        execute("UPDATE employees SET is_resident=0 WHERE id=?", (checkin["employee_id"],))
+        flash("退宿办理成功", "success")
+        return redirect(url_for("checkouts"))
+
+    active_checkins = query_all(
+        """
+        SELECT c.id, e.name employee_name, r.building, r.room_number, c.bed_no, c.checkin_date
+        FROM checkins c
+        JOIN employees e ON c.employee_id=e.id
+        JOIN rooms r ON c.room_id=r.id
+        WHERE c.active=1
+        ORDER BY c.id DESC
+        """
+    )
+    records = query_all(
+        """
+        SELECT o.*, e.name employee_name, r.building, r.room_number
+        FROM checkouts o
+        JOIN employees e ON o.employee_id=e.id
+        JOIN rooms r ON o.room_id=r.id
+        ORDER BY o.id DESC
+        """
+    )
+    return render_template("checkouts.html", active_checkins=active_checkins, records=records, today=date.today().isoformat())
+
+
+@app.route("/resident")
+def resident_query():
+    keyword = request.args.get("name", "").strip()
+    row = None
+    if keyword:
+        row = query_one(
+            """
+            SELECT e.name employee_name, r.building, r.room_number, c.bed_no, c.checkin_date
+            FROM checkins c
+            JOIN employees e ON c.employee_id=e.id
+            JOIN rooms r ON c.room_id=r.id
+            WHERE c.active=1 AND e.name LIKE ?
+            ORDER BY c.id DESC
+            LIMIT 1
+            """,
+            (f"%{keyword}%",),
+        )
+    return render_template("resident_query.html", row=row, keyword=keyword)
+
+
+@app.route("/maintenance", methods=["GET", "POST"])
+def maintenance():
+    if request.method == "POST":
+        form = request.form
+        if form.get("id"):
+            done_date = form["completed_date"] if form["status"] == "已完成" else None
+            execute(
+                """
+                UPDATE maintenance
+                SET report_date=?, building=?, room_number=?, content=?, reporter=?, status=?, completed_date=?, notes=?
+                WHERE id=?
+                """,
+                (
+                    form["report_date"],
+                    form["building"],
+                    form["room_number"],
+                    form["content"],
+                    form["reporter"],
+                    form["status"],
+                    done_date,
+                    form["notes"],
+                    int(form["id"]),
+                ),
+            )
+            flash("报修记录已更新", "success")
+        else:
+            done_date = form["completed_date"] if form["status"] == "已完成" else None
+            execute(
+                """
+                INSERT INTO maintenance (report_date, building, room_number, content, reporter, status, completed_date, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    form["report_date"],
+                    form["building"],
+                    form["room_number"],
+                    form["content"],
+                    form["reporter"],
+                    form["status"],
+                    done_date,
+                    form["notes"],
+                ),
+            )
+            flash("报修记录已新增", "success")
+        return redirect(url_for("maintenance"))
+
+    edit_id = request.args.get("edit_id", type=int)
+    edit_item = query_one("SELECT * FROM maintenance WHERE id=?", (edit_id,)) if edit_id else None
+    q = request.args.get("q", "").strip()
+    if q:
+        records = query_all(
+            "SELECT * FROM maintenance WHERE building LIKE ? OR room_number LIKE ? OR status LIKE ? ORDER BY id DESC",
+            (f"%{q}%", f"%{q}%", f"%{q}%"),
+        )
+    else:
+        records = query_all("SELECT * FROM maintenance ORDER BY id DESC")
+    return render_template("maintenance.html", records=records, edit_item=edit_item, today=date.today().isoformat(), q=q)
+
+
+@app.route("/inspections", methods=["GET", "POST"])
+def inspections():
+    if request.method == "POST":
+        form = request.form
+        execute(
+            """
+            INSERT INTO inspections (inspect_date, building, room_number, inspect_type, inspect_result, issue_desc, handling_result, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                form["inspect_date"],
+                form["building"],
+                form["room_number"],
+                form["inspect_type"],
+                form["inspect_result"],
+                form["issue_desc"],
+                form["handling_result"],
+                form["notes"],
+            ),
+        )
+        flash("检查记录已新增", "success")
+        return redirect(url_for("inspections"))
+
+    q = request.args.get("q", "").strip()
+    if q:
+        records = query_all(
+            "SELECT * FROM inspections WHERE building LIKE ? OR room_number LIKE ? OR inspect_type LIKE ? ORDER BY id DESC",
+            (f"%{q}%", f"%{q}%", f"%{q}%"),
+        )
+    else:
+        records = query_all("SELECT * FROM inspections ORDER BY id DESC")
+    return render_template("inspections.html", records=records, today=date.today().isoformat(), q=q)
+
+
+@app.route("/init-db")
+def init_db_route():
+    init_db(with_demo=True)
+    flash("数据库已初始化（包含演示数据）", "success")
+    return redirect(url_for("dashboard"))
+
+
+if __name__ == "__main__":
+    init_db(with_demo=True)
+    app.run(debug=True)
