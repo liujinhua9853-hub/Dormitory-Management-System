@@ -87,6 +87,41 @@ def inject_current_user():
     return {"current_user_name": session.get("display_name")}
 
 
+def ensure_users_table():
+    db = get_db()
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password TEXT NOT NULL,
+            display_name TEXT NOT NULL
+        )
+        """
+    )
+    admin = db.execute("SELECT id FROM users WHERE username='admin'").fetchone()
+    if not admin:
+        db.execute("INSERT INTO users (username, password, display_name) VALUES (?, ?, ?)", ("admin", "admin123", "系统管理员"))
+    db.commit()
+
+
+@app.before_request
+def require_login():
+    allow_endpoints = {"login", "static"}
+    if request.endpoint in allow_endpoints or request.endpoint is None:
+        return
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+    ensure_base_tables()
+    ensure_checkout_settlement_columns()
+    ensure_users_table()
+
+
+@app.context_processor
+def inject_current_user():
+    return {"current_user_name": session.get("display_name")}
+
+
 def get_db() -> sqlite3.Connection:
     if "db" not in g:
         conn = sqlite3.connect(DB_PATH)
@@ -264,6 +299,34 @@ def logout():
 
 
 # 认证路由：仅保留一组 login/logout 处理器，避免重复注册端点
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    ensure_users_table()
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+        user = query_one("SELECT * FROM users WHERE username=? AND password=?", (username, password))
+        if not user:
+            flash("用户名或密码错误", "error")
+            return render_template("login.html")
+        session["user_id"] = user["id"]
+        session["display_name"] = user["display_name"]
+        flash("登录成功", "success")
+        return redirect(url_for("dashboard"))
+    return render_template("login.html")
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    flash("已退出登录", "success")
+    return redirect(url_for("login"))
+
+
+
+
+# 认证路由：仅保留一组 login/logout 处理器，避免重复注册端点
+# 如发生合并冲突，禁止再新增同名 login/logout 视图函数。
 @app.route("/login", methods=["GET", "POST"])
 def login():
     ensure_users_table()
