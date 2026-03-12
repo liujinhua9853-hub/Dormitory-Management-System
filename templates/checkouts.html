@@ -2,7 +2,7 @@
 {% block title %}退宿管理{% endblock %}
 {% block content %}
 <h2>退宿管理</h2>
-<form method="post" class="form-grid panel">
+<form method="post" class="form-grid panel" id="checkout-form">
   <label>员工住宿记录
     <select name="checkin_id" required>
       <option value="">请选择在住记录</option>
@@ -19,22 +19,79 @@
   <label>押金是否退还
     <select name="deposit_returned"><option value="1">是</option><option value="0">否</option></select>
   </label>
+
+  <label>水表起始读数<input type="number" step="0.01" min="0" name="water_start" id="water_start" required></label>
+  <label>水表结束读数<input type="number" step="0.01" min="0" name="water_end" id="water_end" required></label>
+  <label>水费单价<input type="number" step="0.01" min="0" name="water_price" id="water_price" required></label>
+  <label>水费金额<input type="number" step="0.01" name="water_fee_display" id="water_fee_display" readonly></label>
+
+  <label>电表起始读数<input type="number" step="0.01" min="0" name="electricity_start" id="electricity_start" required></label>
+  <label>电表结束读数<input type="number" step="0.01" min="0" name="electricity_end" id="electricity_end" required></label>
+  <label>电费单价<input type="number" step="0.01" min="0" name="electricity_price" id="electricity_price" required></label>
+  <label>电费金额<input type="number" step="0.01" name="electricity_fee_display" id="electricity_fee_display" readonly></label>
+
+  <label>合计金额<input type="number" step="0.01" name="total_amount_display" id="total_amount_display" readonly></label>
+  <label>结算状态
+    <select name="settlement_status" required>
+      <option value="">请选择结算状态</option>
+      <option value="未结清">未结清</option>
+      <option value="已结清">已结清</option>
+    </select>
+  </label>
+  <label class="full">结算说明<textarea name="settlement_note"></textarea></label>
   <label class="full">备注<textarea name="notes"></textarea></label>
   <div><button type="submit">办理退宿</button></div>
 </form>
 
 <h3>退宿记录</h3>
 <table>
-  <thead><tr><th>员工</th><th>宿舍楼</th><th>房间号</th><th>床位号</th><th>退宿日期</th><th>验房</th><th>损坏</th><th>押金退还</th><th>备注</th></tr></thead>
+  <thead><tr><th>员工</th><th>退宿日期</th><th>水费</th><th>电费</th><th>合计金额</th><th>结算状态</th></tr></thead>
   <tbody>
   {% for r in records %}
     <tr>
-      <td>{{ r.employee_name }}</td><td>{{ r.building }}</td><td>{{ r.room_number }}</td><td>{{ r.bed_no }}</td><td>{{ r.checkout_date }}</td>
-      <td>{{ '是' if r.room_checked else '否' }}</td><td>{{ '是' if r.damaged else '否' }}</td><td>{{ '是' if r.deposit_returned else '否' }}</td><td>{{ r.notes }}</td>
+      <td>{{ r.employee_name }}</td>
+      <td>{{ r.checkout_date }}</td>
+      <td>{{ '%.2f'|format(r.water_fee or 0) }}</td>
+      <td>{{ '%.2f'|format(r.electricity_fee or 0) }}</td>
+      <td>{{ '%.2f'|format(r.total_amount or 0) }}</td>
+      <td>{{ r.settlement_status or '未结清' }}</td>
     </tr>
   {% else %}
-    <tr><td colspan="9">暂无数据</td></tr>
+    <tr><td colspan="6">暂无数据</td></tr>
   {% endfor %}
   </tbody>
 </table>
+
+<script>
+  function toNumber(value) {
+    const n = parseFloat(value);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function calculateSettlement() {
+    const waterStart = toNumber(document.getElementById('water_start').value);
+    const waterEnd = toNumber(document.getElementById('water_end').value);
+    const waterPrice = toNumber(document.getElementById('water_price').value);
+
+    const electricityStart = toNumber(document.getElementById('electricity_start').value);
+    const electricityEnd = toNumber(document.getElementById('electricity_end').value);
+    const electricityPrice = toNumber(document.getElementById('electricity_price').value);
+
+    const waterUsage = Math.max(waterEnd - waterStart, 0);
+    const electricityUsage = Math.max(electricityEnd - electricityStart, 0);
+
+    const waterFee = waterUsage * waterPrice;
+    const electricityFee = electricityUsage * electricityPrice;
+    const total = waterFee + electricityFee;
+
+    document.getElementById('water_fee_display').value = waterFee.toFixed(2);
+    document.getElementById('electricity_fee_display').value = electricityFee.toFixed(2);
+    document.getElementById('total_amount_display').value = total.toFixed(2);
+  }
+
+  ['water_start', 'water_end', 'water_price', 'electricity_start', 'electricity_end', 'electricity_price']
+    .forEach(function(id) {
+      document.getElementById(id).addEventListener('input', calculateSettlement);
+    });
+</script>
 {% endblock %}

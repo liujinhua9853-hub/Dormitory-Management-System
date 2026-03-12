@@ -1,0 +1,18 @@
+<svg width="360" height="90" viewBox="0 0 360 90" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0BC0CF"/>
+      <stop offset="100%" stop-color="#005A7A"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FF7A18"/>
+      <stop offset="100%" stop-color="#B71F00"/>
+    </linearGradient>
+  </defs>
+  <circle cx="40" cy="45" r="26" stroke="url(#g1)" stroke-width="8" fill="none"/>
+  <path d="M52 22C66 28 72 44 66 58C60 71 46 77 31 72" stroke="url(#g1)" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <circle cx="63" cy="45" r="16" fill="url(#g2)"/>
+  <path d="M48 44C56 40 65 40 78 46" stroke="#FFD38A" stroke-width="4" stroke-linecap="round"/>
+  <text x="98" y="48" font-size="32" font-weight="700" fill="#F2B400" font-family="Microsoft YaHei, sans-serif">玛合新能源</text>
+  <text x="98" y="74" font-size="20" font-weight="700" letter-spacing="2" fill="#F2B400" font-family="Arial, sans-serif">ESC NEW ENERGY</text>
+</svg>
