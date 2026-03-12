@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}违规检查{% endblock %}
+{% block content %}
+<h2>违规检查管理</h2>
+<form method="post" class="form-grid panel">
+  <label>检查日期<input type="date" name="inspect_date" required value="{{ today }}"></label>
+  <label>宿舍楼<input name="building" required></label>
+  <label>房间号<input name="room_number" required></label>
+  <label>检查类型
+    <select name="inspect_type"><option value="卫生">卫生</option><option value="安全">安全</option><option value="纪律">纪律</option></select>
+  </label>
+  <label>检查结果<input name="inspect_result" required placeholder="合格/不合格"></label>
+  <label class="full">问题描述<textarea name="issue_desc"></textarea></label>
+  <label class="full">处理结果<textarea name="handling_result"></textarea></label>
+  <label class="full">备注<textarea name="notes"></textarea></label>
+  <div><button type="submit">新增检查记录</button></div>
+</form>
+<div class="toolbar">
+  <form method="get">
+    <input name="q" value="{{ q }}" placeholder="按楼栋/房间号/类型搜索">
+    <button type="submit">查询</button>
+  </form>
+</div>
+<table>
+  <thead><tr><th>日期</th><th>宿舍楼</th><th>房间号</th><th>类型</th><th>结果</th><th>问题描述</th><th>处理结果</th><th>备注</th></tr></thead>
+  <tbody>
+  {% for r in records %}
+    <tr>
+      <td>{{ r.inspect_date }}</td><td>{{ r.building }}</td><td>{{ r.room_number }}</td><td>{{ r.inspect_type }}</td><td>{{ r.inspect_result }}</td>
+      <td>{{ r.issue_desc }}</td><td>{{ r.handling_result }}</td><td>{{ r.notes }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8">暂无数据</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

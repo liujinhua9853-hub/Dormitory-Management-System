@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}员工宿舍管理系统{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <h1>宿舍管理系统</h1>
+    <nav>
+      <a href="{{ url_for('dashboard') }}">首页 / 数据看板</a>
+      <a href="{{ url_for('employees') }}">员工管理</a>
+      <a href="{{ url_for('rooms') }}">房间管理</a>
+      <a href="{{ url_for('checkins') }}">入住管理</a>
+      <a href="{{ url_for('resident_query') }}">住宿查询</a>
+      <a href="{{ url_for('checkouts') }}">退宿管理</a>
+      <a href="{{ url_for('maintenance') }}">报修管理</a>
+      <a href="{{ url_for('inspections') }}">违规检查</a>
+    </nav>
+  </aside>
+  <main class="content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-wrap">
+          {% for category, message in messages %}
+            <div class="flash {{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}房间管理{% endblock %}
+{% block content %}
+<h2>房间管理</h2>
+<div class="toolbar">
+  <form method="get">
+    <input name="q" value="{{ q }}" placeholder="按楼栋/房间号/状态搜索">
+    <button type="submit">查询</button>
+  </form>
+  <a class="btn" href="{{ url_for('room_add') }}">新增房间</a>
+</div>
+<table>
+  <thead><tr><th>宿舍楼</th><th>楼层</th><th>房间号</th><th>房型</th><th>床位总数</th><th>当前入住</th><th>状态</th><th>备注</th><th>操作</th></tr></thead>
+  <tbody>
+  {% for r in rooms %}
+    <tr>
+      <td>{{ r.building }}</td><td>{{ r.floor }}</td><td>{{ r.room_number }}</td><td>{{ r.room_type }}</td>
+      <td>{{ r.total_beds }}</td><td>{{ r.occupied_beds }}</td><td>{{ r.status }}</td><td>{{ r.notes }}</td>
+      <td>
+        <a href="{{ url_for('room_edit', room_id=r.id) }}">编辑</a>
+        <form action="{{ url_for('room_delete', room_id=r.id) }}" method="post" class="inline" onsubmit="return confirm('确认删除该房间吗？')">
+          <button type="submit" class="link-btn">删除</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="9">暂无数据</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

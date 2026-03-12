@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}员工管理{% endblock %}
+{% block content %}
+<h2>员工管理</h2>
+<div class="toolbar">
+  <form method="get">
+    <input name="q" value="{{ q }}" placeholder="按姓名/部门/岗位/电话搜索">
+    <button type="submit">查询</button>
+  </form>
+  <a class="btn" href="{{ url_for('employee_add') }}">新增员工</a>
+</div>
+<table>
+  <thead><tr><th>姓名</th><th>性别</th><th>部门</th><th>岗位</th><th>联系电话</th><th>入职日期</th><th>紧急联系人</th><th>紧急电话</th><th>是否住宿</th><th>操作</th></tr></thead>
+  <tbody>
+  {% for e in employees %}
+    <tr>
+      <td>{{ e.name }}</td><td>{{ e.gender }}</td><td>{{ e.department }}</td><td>{{ e.position }}</td>
+      <td>{{ e.phone }}</td><td>{{ e.hire_date }}</td><td>{{ e.emergency_contact }}</td><td>{{ e.emergency_phone }}</td>
+      <td>{{ '是' if e.is_resident else '否' }}</td>
+      <td>
+        <a href="{{ url_for('employee_edit', employee_id=e.id) }}">编辑</a>
+        <form action="{{ url_for('employee_delete', employee_id=e.id) }}" method="post" class="inline" onsubmit="return confirm('确认删除该员工吗？')">
+          <button type="submit" class="link-btn">删除</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="10">暂无数据</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

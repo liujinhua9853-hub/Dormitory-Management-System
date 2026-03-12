@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}{{ '新增房间' if mode == 'add' else '编辑房间' }}{% endblock %}
+{% block content %}
+<h2>{{ '新增房间' if mode == 'add' else '编辑房间' }}</h2>
+<form method="post" class="form-grid">
+  <label>宿舍楼<input name="building" required value="{{ room.building if room else '' }}"></label>
+  <label>楼层<input name="floor" required value="{{ room.floor if room else '' }}"></label>
+  <label>房间号<input name="room_number" required value="{{ room.room_number if room else '' }}"></label>
+  <label>房型<input name="room_type" required value="{{ room.room_type if room else '' }}"></label>
+  <label>床位总数<input type="number" min="1" name="total_beds" required value="{{ room.total_beds if room else 4 }}"></label>
+  <label>房间状态
+    {% set st = room.status if room else '可入住' %}
+    <select name="status">
+      <option value="可入住" {{ 'selected' if st == '可入住' else '' }}>可入住</option>
+      <option value="满员" {{ 'selected' if st == '满员' else '' }}>满员</option>
+      <option value="维修中" {{ 'selected' if st == '维修中' else '' }}>维修中</option>
+      <option value="停用" {{ 'selected' if st == '停用' else '' }}>停用</option>
+    </select>
+  </label>
+  <label class="full">备注<textarea name="notes">{{ room.notes if room else '' }}</textarea></label>
+  <div><button type="submit">保存</button> <a href="{{ url_for('rooms') }}">返回</a></div>
+</form>
+{% endblock %}

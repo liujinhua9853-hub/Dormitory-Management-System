@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}首页看板{% endblock %}
+{% block content %}
+<h2>首页统计看板</h2>
+<div class="cards">
+  <div class="card"><span>员工总人数</span><strong>{{ stats.employee_total }}</strong></div>
+  <div class="card"><span>在住宿舍人数</span><strong>{{ stats.resident_total }}</strong></div>
+  <div class="card"><span>宿舍房间总数</span><strong>{{ stats.room_total }}</strong></div>
+  <div class="card"><span>总床位数</span><strong>{{ stats.beds_total }}</strong></div>
+  <div class="card"><span>已住床位数</span><strong>{{ stats.beds_used }}</strong></div>
+  <div class="card"><span>空余床位数</span><strong>{{ stats.beds_free }}</strong></div>
+  <div class="card"><span>当前未完成报修</span><strong>{{ stats.repair_open }}</strong></div>
+  <div class="card"><span>本月新增入住人数</span><strong>{{ stats.month_checkins }}</strong></div>
+  <div class="card"><span>本月退宿人数</span><strong>{{ stats.month_checkouts }}</strong></div>
+</div>
+<p class="tip">如需重置演示数据，可访问 <a href="{{ url_for('init_db_route') }}">初始化数据库</a>。</p>
+{% endblock %}

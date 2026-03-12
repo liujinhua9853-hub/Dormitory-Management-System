@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}住宿查询{% endblock %}
+{% block content %}
+<h2>查询员工当前住宿信息</h2>
+<form method="get" class="toolbar">
+  <input name="name" value="{{ keyword }}" placeholder="请输入员工姓名">
+  <button type="submit">查询</button>
+</form>
+{% if keyword %}
+  {% if row %}
+  <div class="panel">
+    <p><strong>员工：</strong>{{ row.employee_name }}</p>
+    <p><strong>住宿：</strong>{{ row.building }} - {{ row.room_number }} - 床位{{ row.bed_no }}</p>
+    <p><strong>入住日期：</strong>{{ row.checkin_date }}</p>
+  </div>
+  {% else %}
+  <p>未查询到该员工当前住宿记录。</p>
+  {% endif %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block title %}入住管理{% endblock %}
+{% block content %}
+<h2>入住管理</h2>
+<form method="post" class="form-grid panel">
+  <label>员工姓名
+    <select name="employee_id" required>
+      <option value="">请选择员工</option>
+      {% for e in employees %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>房间
+    <select name="room_id" required>
+      <option value="">请选择房间</option>
+      {% for r in rooms %}<option value="{{ r.id }}">{{ r.building }}-{{ r.room_number }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>床位号<input name="bed_no" required placeholder="例如：1"></label>
+  <label>入住日期<input type="date" name="checkin_date" required value="{{ today }}"></label>
+  <label>押金金额<input type="number" step="0.01" min="0" name="deposit" value="0"></label>
+  <label>是否发放钥匙
+    <select name="key_issued"><option value="1">是</option><option value="0">否</option></select>
+  </label>
+  <label class="full">备注<textarea name="notes"></textarea></label>
+  <div><button type="submit">办理入住</button></div>
+</form>
+
+<h3>入住记录</h3>
+<table>
+  <thead><tr><th>员工</th><th>宿舍楼</th><th>房间号</th><th>床位号</th><th>入住日期</th><th>押金</th><th>钥匙</th><th>状态</th><th>备注</th></tr></thead>
+  <tbody>
+  {% for r in records %}
+    <tr>
+      <td>{{ r.employee_name }}</td><td>{{ r.building }}</td><td>{{ r.room_number }}</td><td>{{ r.bed_no }}</td>
+      <td>{{ r.checkin_date }}</td><td>{{ r.deposit }}</td><td>{{ '是' if r.key_issued else '否' }}</td>
+      <td>{{ '在住' if r.active else '已退宿' }}</td><td>{{ r.notes }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="9">暂无数据</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
