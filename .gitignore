@@ -1,0 +1,4 @@
+venv/
+dormitory.db
+__pycache__/
+*.pyc
