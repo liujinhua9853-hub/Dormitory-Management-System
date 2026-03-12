@@ -87,8 +87,42 @@ def init_db(with_demo: bool = True):
             conn.commit()
 
 
+def ensure_checkout_settlement_columns():
+    db = get_db()
+    existing_columns = {row["name"] for row in db.execute("PRAGMA table_info(checkouts)").fetchall()}
+    required_columns = {
+        "water_start": "REAL NOT NULL DEFAULT 0",
+        "water_end": "REAL NOT NULL DEFAULT 0",
+        "water_price": "REAL NOT NULL DEFAULT 0",
+        "water_fee": "REAL NOT NULL DEFAULT 0",
+        "electricity_start": "REAL NOT NULL DEFAULT 0",
+        "electricity_end": "REAL NOT NULL DEFAULT 0",
+        "electricity_price": "REAL NOT NULL DEFAULT 0",
+        "electricity_fee": "REAL NOT NULL DEFAULT 0",
+        "total_amount": "REAL NOT NULL DEFAULT 0",
+        "settlement_note": "TEXT",
+        "settlement_status": "TEXT NOT NULL DEFAULT '未结清'",
+    }
+    for col_name, col_type in required_columns.items():
+        if col_name not in existing_columns:
+            db.execute(f"ALTER TABLE checkouts ADD COLUMN {col_name} {col_type}")
+    db.commit()
+
+
 def validate_phone(phone: str) -> bool:
     return phone.isdigit() and 7 <= len(phone) <= 15
+
+
+def parse_non_negative_float(value: str, field_name: str) -> float:
+    if value is None or str(value).strip() == "":
+        raise ValueError(f"{field_name}不能为空")
+    try:
+        number = float(value)
+    except ValueError as exc:
+        raise ValueError(f"{field_name}必须为数字") from exc
+    if number < 0:
+        raise ValueError(f"{field_name}不能为负数")
+    return number
 
 
 def refresh_room_status(room_id: int):
@@ -376,6 +410,7 @@ def checkins():
 
 @app.route("/checkouts", methods=["GET", "POST"])
 def checkouts():
+    ensure_checkout_settlement_columns()
     if request.method == "POST":
         form = request.form
         checkin_id = int(form["checkin_id"])
@@ -384,10 +419,42 @@ def checkouts():
             flash("入住记录不存在或已退宿", "error")
             return redirect(url_for("checkouts"))
 
+        try:
+            water_start = parse_non_negative_float(form.get("water_start"), "水表起始读数")
+            water_end = parse_non_negative_float(form.get("water_end"), "水表结束读数")
+            water_price = parse_non_negative_float(form.get("water_price"), "水费单价")
+            electricity_start = parse_non_negative_float(form.get("electricity_start"), "电表起始读数")
+            electricity_end = parse_non_negative_float(form.get("electricity_end"), "电表结束读数")
+            electricity_price = parse_non_negative_float(form.get("electricity_price"), "电费单价")
+        except ValueError as e:
+            flash(str(e), "error")
+            return redirect(url_for("checkouts"))
+
+        if water_end < water_start:
+            flash("水表结束读数不能小于起始读数", "error")
+            return redirect(url_for("checkouts"))
+        if electricity_end < electricity_start:
+            flash("电表结束读数不能小于起始读数", "error")
+            return redirect(url_for("checkouts"))
+
+        settlement_status = form.get("settlement_status", "").strip()
+        if settlement_status not in ("未结清", "已结清"):
+            flash("结算状态不合法", "error")
+            return redirect(url_for("checkouts"))
+
+        water_fee = (water_end - water_start) * water_price
+        electricity_fee = (electricity_end - electricity_start) * electricity_price
+        total_amount = water_fee + electricity_fee
+
         execute(
             """
-            INSERT INTO checkouts (checkin_id, employee_id, room_id, bed_no, checkout_date, room_checked, damaged, deposit_returned, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO checkouts (
+                checkin_id, employee_id, room_id, bed_no, checkout_date, room_checked, damaged, deposit_returned, notes,
+                water_start, water_end, water_price, water_fee,
+                electricity_start, electricity_end, electricity_price, electricity_fee,
+                total_amount, settlement_note, settlement_status
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 checkin_id,
@@ -399,6 +466,17 @@ def checkouts():
                 1 if form.get("damaged") == "1" else 0,
                 1 if form.get("deposit_returned") == "1" else 0,
                 form["notes"],
+                water_start,
+                water_end,
+                water_price,
+                water_fee,
+                electricity_start,
+                electricity_end,
+                electricity_price,
+                electricity_fee,
+                total_amount,
+                form.get("settlement_note", "").strip(),
+                settlement_status,
             ),
         )
         execute("UPDATE checkins SET active=0 WHERE id=?", (checkin_id,))
@@ -546,10 +624,13 @@ def inspections():
 @app.route("/init-db")
 def init_db_route():
     init_db(with_demo=True)
+    ensure_checkout_settlement_columns()
     flash("数据库已初始化（包含演示数据）", "success")
     return redirect(url_for("dashboard"))
 
 
 if __name__ == "__main__":
     init_db(with_demo=True)
+    with app.app_context():
+        ensure_checkout_settlement_columns()
     app.run(debug=True)
