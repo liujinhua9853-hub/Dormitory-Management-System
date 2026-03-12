@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS checkouts;
 DROP TABLE IF EXISTS checkins;
 DROP TABLE IF EXISTS maintenance;
@@ -55,6 +56,17 @@ CREATE TABLE checkouts (
     room_checked INTEGER NOT NULL DEFAULT 0 CHECK (room_checked IN (0, 1)),
     damaged INTEGER NOT NULL DEFAULT 0 CHECK (damaged IN (0, 1)),
     deposit_returned INTEGER NOT NULL DEFAULT 0 CHECK (deposit_returned IN (0, 1)),
+    water_start REAL NOT NULL DEFAULT 0,
+    water_end REAL NOT NULL DEFAULT 0,
+    water_price REAL NOT NULL DEFAULT 0 CHECK (water_price >= 0),
+    water_fee REAL NOT NULL DEFAULT 0,
+    electricity_start REAL NOT NULL DEFAULT 0,
+    electricity_end REAL NOT NULL DEFAULT 0,
+    electricity_price REAL NOT NULL DEFAULT 0 CHECK (electricity_price >= 0),
+    electricity_fee REAL NOT NULL DEFAULT 0,
+    total_amount REAL NOT NULL DEFAULT 0,
+    settlement_note TEXT,
+    settlement_status TEXT NOT NULL DEFAULT '未结清' CHECK (settlement_status IN ('未结清', '已结清')),
     notes TEXT,
     FOREIGN KEY (checkin_id) REFERENCES checkins (id),
     FOREIGN KEY (employee_id) REFERENCES employees (id),
@@ -84,3 +96,13 @@ CREATE TABLE inspections (
     handling_result TEXT,
     notes TEXT
 );
+
+
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    display_name TEXT NOT NULL
+);
+
+INSERT INTO users (username, password, display_name) VALUES ('admin', 'admin123', '系统管理员');
