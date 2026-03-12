@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 - 员工宿舍管理系统</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="login-body">
+  <div class="login-card panel">
+    <img src="{{ url_for('static', filename='company-logo.svg') }}" alt="玛合新能源" class="login-logo">
+    <h2>员工宿舍管理系统登录</h2>
+    <p class="login-tip">默认账号：admin / admin123</p>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-wrap">
+          {% for category, message in messages %}
+            <div class="flash {{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    <form method="post" class="form-grid login-form">
+      <label class="full">用户名
+        <input type="text" name="username" required autocomplete="username">
+      </label>
+      <label class="full">密码
+        <input type="password" name="password" required autocomplete="current-password">
+      </label>
+      <div class="full"><button type="submit">登录系统</button></div>
+    </form>
+  </div>
+</body>
+</html>
