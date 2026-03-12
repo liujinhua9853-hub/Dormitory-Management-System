@@ -6,12 +6,15 @@ from datetime import date, datetime
 from pathlib import Path
 
 from flask import Flask, g, redirect, render_template, request, url_for, flash, make_response, session
+from flask import Flask, g, redirect, render_template, request, url_for, flash, session
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "dormitory.db"
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "dormitory-dev-key"
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "123456"
 
 
 def ensure_users_table():
@@ -56,6 +59,10 @@ def get_db() -> sqlite3.Connection:
         conn.execute("PRAGMA foreign_keys = ON")
         g.db = conn
     return g.db
+
+
+def is_logged_in() -> bool:
+    return session.get("logged_in", False)
 
 
 @app.teardown_appcontext
@@ -135,6 +142,8 @@ def ensure_checkout_settlement_columns():
     checkout_exists = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='checkouts'").fetchone()
     if not checkout_exists:
         return
+def ensure_checkout_settlement_columns():
+    db = get_db()
     existing_columns = {row["name"] for row in db.execute("PRAGMA table_info(checkouts)").fetchall()}
     required_columns = {
         "water_start": "REAL NOT NULL DEFAULT 0",
@@ -179,6 +188,16 @@ def refresh_room_status(room_id: int):
         return
     status = "满员" if room["occupied_beds"] >= room["total_beds"] else "可入住"
     execute("UPDATE rooms SET status=? WHERE id=?", (status, room_id))
+
+@app.before_request
+def require_login():
+    allowed_routes = {"login", "static"}
+
+    if request.endpoint in allowed_routes:
+        return
+
+    if not is_logged_in():
+        return redirect(url_for("login"))
 
 
 
@@ -226,6 +245,20 @@ def dashboard():
     stats["beds_free"] = max(stats["beds_total"] - stats["beds_used"], 0)
     return render_template("dashboard.html", stats=stats)
 
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+
+        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+            session["logged_in"] = True
+            flash("登录成功", "success")
+            return redirect(url_for("dashboard"))
+        else:
+            flash("用户名或密码错误", "error")
+
+    return render_template("login.html")
 
 @app.route("/employees")
 def employees():
@@ -396,6 +429,11 @@ def room_edit(room_id: int):
         return redirect(url_for("rooms"))
     return render_template("room_form.html", room=room, mode="edit")
 
+@app.route("/logout")
+def logout():
+    session.pop("logged_in", None)
+    flash("已退出登录", "success")
+    return redirect(url_for("login"))
 
 @app.route("/rooms/<int:room_id>/delete", methods=["POST"])
 def room_delete(room_id: int):
@@ -748,5 +786,7 @@ if __name__ == "__main__":
         init_db(with_demo=True)
     with app.app_context():
         ensure_users_table()
+    init_db(with_demo=True)
+    with app.app_context():
         ensure_checkout_settlement_columns()
     app.run(debug=True)
