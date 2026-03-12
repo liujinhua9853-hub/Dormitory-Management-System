@@ -5,6 +5,7 @@ from contextlib import closing
 from datetime import date, datetime
 from pathlib import Path
 
+from flask import Flask, g, redirect, render_template, request, url_for, flash, make_response, session
 from flask import Flask, g, redirect, render_template, request, url_for, flash, session
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -14,6 +15,41 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = "dormitory-dev-key"
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "123456"
+
+
+def ensure_users_table():
+    db = get_db()
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password TEXT NOT NULL,
+            display_name TEXT NOT NULL
+        )
+        """
+    )
+    admin = db.execute("SELECT id FROM users WHERE username='admin'").fetchone()
+    if not admin:
+        db.execute("INSERT INTO users (username, password, display_name) VALUES (?, ?, ?)", ("admin", "admin123", "系统管理员"))
+    db.commit()
+
+
+@app.before_request
+def require_login():
+    allow_endpoints = {"login", "static"}
+    if request.endpoint in allow_endpoints or request.endpoint is None:
+        return
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+    ensure_base_tables()
+    ensure_checkout_settlement_columns()
+    ensure_users_table()
+
+
+@app.context_processor
+def inject_current_user():
+    return {"current_user_name": session.get("display_name")}
 
 
 def get_db() -> sqlite3.Connection:
@@ -93,6 +129,19 @@ def init_db(with_demo: bool = True):
             conn.commit()
 
 
+
+
+def ensure_base_tables():
+    db = get_db()
+    has_employees = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='employees'").fetchone()
+    if not has_employees:
+        init_db(with_demo=True)
+
+def ensure_checkout_settlement_columns():
+    db = get_db()
+    checkout_exists = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='checkouts'").fetchone()
+    if not checkout_exists:
+        return
 def ensure_checkout_settlement_columns():
     db = get_db()
     existing_columns = {row["name"] for row in db.execute("PRAGMA table_info(checkouts)").fetchall()}
@@ -149,6 +198,32 @@ def require_login():
 
     if not is_logged_in():
         return redirect(url_for("login"))
+
+
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    ensure_users_table()
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+        user = query_one("SELECT * FROM users WHERE username=? AND password=?", (username, password))
+        if not user:
+            flash("用户名或密码错误", "error")
+            return render_template("login.html")
+        session["user_id"] = user["id"]
+        session["display_name"] = user["display_name"]
+        flash("登录成功", "success")
+        return redirect(url_for("dashboard"))
+    return render_template("login.html")
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    flash("已退出登录", "success")
+    return redirect(url_for("login"))
 
 
 @app.route("/")
@@ -656,15 +731,61 @@ def inspections():
     return render_template("inspections.html", records=records, today=date.today().isoformat(), q=q)
 
 
+@app.route("/export/excel")
+def export_excel():
+    ensure_checkout_settlement_columns()
+    datasets = [
+        ("员工信息", "SELECT * FROM employees ORDER BY id DESC"),
+        ("房间信息", "SELECT * FROM rooms ORDER BY id DESC"),
+        ("入住记录", "SELECT * FROM checkins ORDER BY id DESC"),
+        ("退宿结算", "SELECT * FROM checkouts ORDER BY id DESC"),
+        ("报修记录", "SELECT * FROM maintenance ORDER BY id DESC"),
+        ("违规检查", "SELECT * FROM inspections ORDER BY id DESC"),
+    ]
+
+    html_parts = [
+        "<html><head><meta charset='utf-8'></head><body>",
+        f"<h2>宿舍管理数据导出（{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}）</h2>",
+    ]
+
+    for title, sql in datasets:
+        rows = query_all(sql)
+        html_parts.append(f"<h3>{title}</h3>")
+        if not rows:
+            html_parts.append("<p>暂无数据</p>")
+            continue
+
+        headers = list(rows[0].keys())
+        html_parts.append("<table border='1' cellspacing='0' cellpadding='4'>")
+        html_parts.append("<tr>" + "".join(f"<th>{h}</th>" for h in headers) + "</tr>")
+        for row in rows:
+            html_parts.append("<tr>" + "".join(f"<td>{'' if row[h] is None else row[h]}</td>" for h in headers) + "</tr>")
+        html_parts.append("</table><br>")
+
+    html_parts.append("</body></html>")
+    content = "".join(html_parts)
+
+    filename = f"宿舍管理数据导出_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xls"
+    response = make_response(content)
+    response.headers["Content-Type"] = "application/vnd.ms-excel; charset=utf-8"
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    return response
+
+
 @app.route("/init-db")
 def init_db_route():
     init_db(with_demo=True)
+    ensure_users_table()
     ensure_checkout_settlement_columns()
     flash("数据库已初始化（包含演示数据）", "success")
     return redirect(url_for("dashboard"))
 
 
 if __name__ == "__main__":
+    if not DB_PATH.exists():
+        init_db(with_demo=True)
+    with app.app_context():
+        ensure_users_table()
     init_db(with_demo=True)
     with app.app_context():
         ensure_checkout_settlement_columns()

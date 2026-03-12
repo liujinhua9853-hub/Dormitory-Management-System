@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS checkouts;
 DROP TABLE IF EXISTS checkins;
 DROP TABLE IF EXISTS maintenance;
@@ -95,3 +96,13 @@ CREATE TABLE inspections (
     handling_result TEXT,
     notes TEXT
 );
+
+
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    display_name TEXT NOT NULL
+);
+
+INSERT INTO users (username, password, display_name) VALUES ('admin', 'admin123', '系统管理员');

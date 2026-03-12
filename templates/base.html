@@ -9,7 +9,11 @@
 <body>
 <div class="layout">
   <aside class="sidebar">
-    <h1>宿舍管理系统</h1>
+    <div class="brand">
+      <img src="{{ url_for('static', filename='company-logo.svg') }}" alt="玛合新能源" class="brand-logo">
+      <h1>宿舍管理系统</h1>
+      <p>玛合新能源 · 员工宿舍管理平台</p>
+    </div>
     <nav>
       <a href="{{ url_for('dashboard') }}">首页 / 数据看板</a>
       <a href="{{ url_for('employees') }}">员工管理</a>
@@ -19,10 +23,23 @@
       <a href="{{ url_for('checkouts') }}">退宿管理</a>
       <a href="{{ url_for('maintenance') }}">报修管理</a>
       <a href="{{ url_for('inspections') }}">违规检查</a>
+      <a href="{{ url_for('export_excel') }}">数据导出（Excel）</a>
       <a href="{{ url_for('logout') }}">退出登录</a>
     </nav>
   </aside>
   <main class="content">
+    <div class="topbar panel">
+      <div class="topbar-title">员工宿舍管理系统</div>
+      <div class="topbar-actions">
+        <span class="user-badge">当前用户：{{ current_user_name or '未登录' }}</span>
+        {% if current_user_name %}
+        <form method="post" action="{{ url_for('logout') }}" class="inline">
+          <button type="submit" class="btn btn-secondary">退出登录</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div class="flash-wrap">
